@@ -186,6 +186,7 @@
     "test": "vscode-test"
   },
   "devDependencies": {
+    "@types/glob": "^9.0.0",
     "@types/js-yaml": "^4.0.9",
     "@types/mocha": "^10.0.8",
     "@types/node": "20.x",
@@ -201,6 +202,7 @@
     "webpack-cli": "^5.1.4"
   },
   "dependencies": {
+    "glob": "^13.0.0",
     "js-yaml": "^4.1.1",
     "uuid": "^13.0.0",
     "vscode-nls": "^5.2.0"

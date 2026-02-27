@@ -270,4 +270,14 @@ class TreeItemFactoryImpl implements TreeItemFactory {
 
         return treeItem;
     }
+
+    /** Return the URI for the item (File or Outline) */
+    GetUri(): vscode.Uri | undefined {
+        // FileItem uses fileInfo.uri
+        if (this.GetItemType() === ItemType.File || this.GetItemType() === ItemType.Outline) {
+            return this.fileInfo.uri;
+        }
+
+        return undefined;
+    }
 }

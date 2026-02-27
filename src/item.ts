@@ -1,283 +1,291 @@
-import * as vscode from 'vscode';
-import * as path from 'path';
+import * as vscode from "vscode";
+import * as path from "path";
 
-import { SymbolKind2IconId, OutlineInfo } from './outline';
-import { FileInfo, IsSupportedFile } from './file';
+import { SymbolKind2IconId, OutlineInfo } from "./outline";
+import { FileInfo, IsSupportedFile } from "./file";
 
-import * as Logger from './log';
-import * as uuid from './id';
+import * as Logger from "./log";
+import * as uuid from "./id";
 
 export enum ItemType {
-    File,
-    Outline
+  File,
+  Outline,
 }
 
 export abstract class Item {
-    fileInfo: FileInfo;
-    parent: Item | undefined;
-    children: Item[] | undefined;
+  fileInfo: FileInfo;
+  parent: Item | undefined;
+  children: Item[] | undefined;
 
-    treeItem: vscode.TreeItem | undefined;
+  treeItem: vscode.TreeItem | undefined;
 
-    constructor(fileInfo: FileInfo, parent?: Item) {
-        this.fileInfo = fileInfo;
-        this.parent = parent;
+  constructor(fileInfo: FileInfo, parent?: Item) {
+    this.fileInfo = fileInfo;
+    this.parent = parent;
+  }
+
+  abstract GetItemType(): ItemType;
+  abstract OnClick(): void;
+  abstract CreateTreeItem(): Promise<vscode.TreeItem>;
+  abstract GetUri(): vscode.Uri;
+
+  async GetTreeItem(): Promise<vscode.TreeItem> {
+    if (!this.treeItem) {
+      this.treeItem = await this.CreateTreeItem();
     }
 
-    abstract GetItemType(): ItemType;
-    abstract OnClick(): void;
-    abstract CreateTreeItem(): Promise<vscode.TreeItem>;
-    abstract GetUri(): vscode.Uri;
+    return this.treeItem;
+  }
 
-    async GetTreeItem(): Promise<vscode.TreeItem> {
-        if (!this.treeItem) {
-            this.treeItem = await this.CreateTreeItem();
-        }
-
-        return this.treeItem;
+  /**
+   * Set the collapsible state of the item. Maintain the item_manager's expandedItems set before this method is called.
+   * @param state
+   */
+  async SetCollapsibleState(state: vscode.TreeItemCollapsibleState) {
+    if (!this.treeItem) {
+      this.treeItem = await this.CreateTreeItem();
+    } else {
+      let id = await uuid.GenerateUid();
+      this.treeItem.id = id;
     }
 
-    /**
-     * Set the collapsible state of the item. Maintain the item_manager's expandedItems set before this method is called.
-     * @param state 
-     */
-    async SetCollapsibleState(state: vscode.TreeItemCollapsibleState) {
-        if (!this.treeItem) {
-            this.treeItem = await this.CreateTreeItem();
-        } else {
-            let id = await uuid.GenerateUid();
-            this.treeItem.id = id;
-        }
-
-        // none means the item can not be set collapsible state
-        if (this.treeItem.collapsibleState === vscode.TreeItemCollapsibleState.None) {
-            return;
-        }
-
-        this.treeItem.collapsibleState = state;
+    // none means the item can not be set collapsible state
+    if (
+      this.treeItem.collapsibleState === vscode.TreeItemCollapsibleState.None
+    ) {
+      return;
     }
 
-    ResetTreeItem(): void {
-        this.treeItem = undefined;
-    }
+    this.treeItem.collapsibleState = state;
+  }
+
+  ResetTreeItem(): void {
+    this.treeItem = undefined;
+  }
 }
 
 export class FileItem extends Item {
-    private treeItemFactory: TreeItemFactory = NewTreeItemFactory();
+  private treeItemFactory: TreeItemFactory = NewTreeItemFactory();
 
-    constructor(uri: vscode.Uri, type: vscode.FileType) {
-        super(new FileInfo(uri, type));
-    }
+  constructor(uri: vscode.Uri, type: vscode.FileType) {
+    super(new FileInfo(uri, type));
+  }
 
-    GetItemType(): ItemType {
-        return ItemType.File;
-    }
+  GetItemType(): ItemType {
+    return ItemType.File;
+  }
 
-    GetUri(): vscode.Uri {
-        return this.fileInfo.uri;
-    }
+  GetUri(): vscode.Uri {
+    return this.fileInfo.uri;
+  }
 
-    OnClick() {
-        vscode.commands.executeCommand('vscode.open', this.fileInfo.uri);
-    }
+  OnClick() {
+    vscode.commands.executeCommand("vscode.open", this.fileInfo.uri);
+  }
 
-    CreateTreeItem(): Promise<vscode.TreeItem> {
-        return this.treeItemFactory.Create(this);
-    }
+  CreateTreeItem(): Promise<vscode.TreeItem> {
+    return this.treeItemFactory.Create(this);
+  }
 }
 
 export class OutlineItem extends Item {
-    declare children: OutlineItem[] | undefined;
+  declare children: OutlineItem[] | undefined;
 
-    outlineInfo: OutlineInfo;
+  outlineInfo: OutlineInfo;
 
-    private treeItemFactory: TreeItemFactory = NewTreeItemFactory();
+  private treeItemFactory: TreeItemFactory = NewTreeItemFactory();
 
-    constructor(fileItem: FileInfo, parent: Item | undefined, documentSymbol: vscode.DocumentSymbol) {
-        super(fileItem, parent);
-        this.outlineInfo = { documentSymbol };
+  constructor(
+    fileItem: FileInfo,
+    parent: Item | undefined,
+    documentSymbol: vscode.DocumentSymbol,
+  ) {
+    super(fileItem, parent);
+    this.outlineInfo = { documentSymbol };
 
-        if (documentSymbol.children.length > 0) {
-            this.children = [];
+    if (documentSymbol.children.length > 0) {
+      this.children = [];
 
-            for (let child of documentSymbol.children) {
-                let c = new OutlineItem(fileItem, this, child);
-                this.children.push(c);
-            }
-        }
+      for (let child of documentSymbol.children) {
+        let c = new OutlineItem(fileItem, this, child);
+        this.children.push(c);
+      }
+    }
+  }
+
+  GetItemType(): ItemType {
+    return ItemType.Outline;
+  }
+
+  GetUri(): vscode.Uri {
+    return this.fileInfo.uri;
+  }
+
+  async OnClick() {
+    const documentSymbol = this.outlineInfo.documentSymbol;
+    const selection = new vscode.Selection(
+      documentSymbol.selectionRange.start,
+      documentSymbol.selectionRange.start,
+    );
+
+    let targetEditor = vscode.window.activeTextEditor;
+    let document = targetEditor?.document;
+
+    let uri = this.fileInfo.uri;
+
+    if (!document || document.uri.toString() !== uri.toString()) {
+      document = await vscode.workspace.openTextDocument(uri.path);
     }
 
-    GetItemType(): ItemType {
-        return ItemType.Outline;
+    await vscode.window.showTextDocument(document, {
+      viewColumn: vscode.ViewColumn.Active,
+      selection: selection,
+    });
+  }
+
+  async CreateTreeItem(): Promise<vscode.TreeItem> {
+    return this.treeItemFactory.Create(this);
+  }
+
+  GetMatchedItemInRange(range: vscode.Range): Item | undefined {
+    let documentSymbol = this.outlineInfo.documentSymbol;
+
+    // it is not in the range of the documentSymbol
+    if (!documentSymbol.range.contains(range)) {
+      return undefined;
     }
 
-    GetUri(): vscode.Uri {
-        return this.fileInfo.uri;
+    // equals has the highest priority
+    if (documentSymbol.selectionRange.isEqual(range)) {
+      return this;
     }
 
-    async OnClick() {
-        const documentSymbol = this.outlineInfo.documentSymbol;
-        const selection = new vscode.Selection(documentSymbol.selectionRange.start, documentSymbol.selectionRange.start);
+    // if it has no children and contains the range, return it
+    if (!this.children) {
+      if (documentSymbol.selectionRange.contains(range)) {
+        return this;
+      }
 
-        let targetEditor = vscode.window.activeTextEditor;
-        let document = targetEditor?.document;
-
-        let uri = this.fileInfo.uri;
-
-        if (!document || document.uri.toString() !== uri.toString()) {
-            document = await vscode.workspace.openTextDocument(uri.path);
-        }
-
-        await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.Active, selection: selection });
+      return undefined;
     }
 
-    async CreateTreeItem(): Promise<vscode.TreeItem> {
-        return this.treeItemFactory.Create(this);
+    // then children first
+    for (let child of this.children) {
+      let result = child.GetMatchedItemInRange(range);
+      if (result) {
+        return result;
+      }
     }
 
-    GetMatchedItemInRange(range: vscode.Range): Item | undefined {
-        let documentSymbol = this.outlineInfo.documentSymbol;
-
-        // it is not in the range of the documentSymbol
-        if (!documentSymbol.range.contains(range)) {
-            return undefined;
-        }
-
-        // equals has the highest priority
-        if (documentSymbol.selectionRange.isEqual(range)) {
-            return this;
-        }
-
-        // if it has no children and contains the range, return it
-        if (!this.children) {
-            if (documentSymbol.selectionRange.contains(range)) {
-                return this;
-            }
-
-            return undefined;
-        }
-
-        // then children first
-        for (let child of this.children) {
-            let result = child.GetMatchedItemInRange(range);
-            if (result) {
-                return result;
-            }
-        }
-
-        // if it contains the range, return
-        if (documentSymbol.selectionRange.contains(range)) {
-            return this;
-        }
-
-        return undefined;
+    // if it contains the range, return
+    if (documentSymbol.selectionRange.contains(range)) {
+      return this;
     }
+
+    return undefined;
+  }
 }
 
-
 interface TreeItemFactory {
-    Create(element: Item): Promise<vscode.TreeItem>;
+  Create(element: Item): Promise<vscode.TreeItem>;
 }
 
 function NewTreeItemFactory(): TreeItemFactory {
-    return new TreeItemFactoryImpl();
+  return new TreeItemFactoryImpl();
 }
 
-
 class TreeItemFactoryImpl implements TreeItemFactory {
-    async Create(element: Item): Promise<vscode.TreeItem> {
-        let itemType = element.GetItemType();
+  async Create(element: Item): Promise<vscode.TreeItem> {
+    let itemType = element.GetItemType();
 
-        let treeItem: vscode.TreeItem;
+    let treeItem: vscode.TreeItem;
 
-        if (itemType === ItemType.File) {
-            treeItem = this.fromFileItem(element as FileItem);
-        } else if (itemType === ItemType.Outline) {
-            let outlineItem = element as OutlineItem;
-            treeItem = this.fromOutlineItem(outlineItem);
-        } else {
-            Logger.Error('TreeItemFactoryImpl Create Invalid OutlineExploreItem ', element);
-            throw new Error('TreeItemFactoryImpl Create Invalid OutlineExploreItem ');
-        }
-
-        treeItem.id = await uuid.GenerateUid();
-
-        return treeItem;
+    if (itemType === ItemType.File) {
+      treeItem = this.fromFileItem(element as FileItem);
+    } else if (itemType === ItemType.Outline) {
+      let outlineItem = element as OutlineItem;
+      treeItem = this.fromOutlineItem(outlineItem);
+    } else {
+      Logger.Error(
+        "TreeItemFactoryImpl Create Invalid OutlineExploreItem ",
+        element,
+      );
+      throw new Error("TreeItemFactoryImpl Create Invalid OutlineExploreItem ");
     }
 
-    fromFileItem(element: FileItem): vscode.TreeItem {
-        if (!element.fileInfo) {
-            Logger.Error('createFileInfo TreeItem Invalid OutlineExploreItem ');
-            throw new Error('createFileInfo TreeItem Invalid OutlineExploreItem ');
-        }
+    treeItem.id = await uuid.GenerateUid();
 
-        let fileItem = element.fileInfo;
+    return treeItem;
+  }
 
-        const treeItem = new vscode.TreeItem(fileItem.uri);
-
-        if (fileItem.type === vscode.FileType.File) {
-            treeItem.iconPath = vscode.ThemeIcon.File;
-            treeItem.command = {
-                command: 'outline-explorer.item-clicked',
-                title: 'Click Item',
-                arguments: [element]
-            };
-
-            // 检查是否为二进制文件（基于文件扩展名）
-            if (!IsSupportedFile(fileItem.uri)) {
-                // 二进制文件，设置为不可展开
-                treeItem.collapsibleState = vscode.TreeItemCollapsibleState.None;
-                treeItem.contextValue = 'unsupported';
-            } else {
-                // 文本文件，可以展开查看大纲
-                treeItem.collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
-                treeItem.contextValue = 'file';
-            }
-        } else {
-            // 文件夹
-            treeItem.collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
-            treeItem.iconPath = vscode.ThemeIcon.Folder;
-            treeItem.contextValue = 'folder';
-        }
-
-        return treeItem;
+  fromFileItem(element: FileItem): vscode.TreeItem {
+    if (!element.fileInfo) {
+      Logger.Error("createFileInfo TreeItem Invalid OutlineExploreItem ");
+      throw new Error("createFileInfo TreeItem Invalid OutlineExploreItem ");
     }
 
-    fromOutlineItem(element: OutlineItem): vscode.TreeItem {
-        if (!element.outlineInfo || !element.outlineInfo.documentSymbol) {
-            Logger.Error('createOutlineItem TreeItem Invalid OutlineExploreItem ', element);
-            throw new Error('createOutlineItem TreeItem Invalid OutlineExploreItem ');
-        }
+    let fileItem = element.fileInfo;
 
-        let documentSymbol = element.outlineInfo.documentSymbol;
+    const treeItem = new vscode.TreeItem(fileItem.uri);
 
-        const treeItem = new vscode.TreeItem(documentSymbol.name);
-        if (documentSymbol.children?.length > 0) {
-            treeItem.collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
-        } else {
-            treeItem.collapsibleState = vscode.TreeItemCollapsibleState.None;
-        }
+    if (fileItem.type === vscode.FileType.File) {
+      treeItem.iconPath = vscode.ThemeIcon.File;
+      treeItem.command = {
+        command: "outline-explorer.item-clicked",
+        title: "Click Item",
+        arguments: [element],
+      };
 
-        treeItem.iconPath = new vscode.ThemeIcon(SymbolKind2IconId.get(documentSymbol.kind) || 'symbol-property');
-        treeItem.description = documentSymbol.detail;
-        treeItem.command = {
-            command: 'outline-explorer.item-clicked',
-            title: 'Click Item',
-            arguments: [element]
-        };
-
-        treeItem.contextValue = 'outline';
-
-        return treeItem;
+      // 检查是否为二进制文件（基于文件扩展名）
+      if (!IsSupportedFile(fileItem.uri)) {
+        // 二进制文件，设置为不可展开
+        treeItem.collapsibleState = vscode.TreeItemCollapsibleState.None;
+        treeItem.contextValue = "unsupported";
+      } else {
+        // 文本文件，可以展开查看大纲
+        treeItem.collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
+        treeItem.contextValue = "file";
+      }
+    } else {
+      // 文件夹
+      treeItem.collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
+      treeItem.iconPath = vscode.ThemeIcon.Folder;
+      treeItem.contextValue = "folder";
     }
 
-    /** Return the URI for the item (File or Outline) */
-    GetUri(): vscode.Uri | undefined {
-        // FileItem uses fileInfo.uri
-        if (this.GetItemType() === ItemType.File || this.GetItemType() === ItemType.Outline) {
-            return this.fileInfo.uri;
-        }
+    return treeItem;
+  }
 
-        return undefined;
+  fromOutlineItem(element: OutlineItem): vscode.TreeItem {
+    if (!element.outlineInfo || !element.outlineInfo.documentSymbol) {
+      Logger.Error(
+        "createOutlineItem TreeItem Invalid OutlineExploreItem ",
+        element,
+      );
+      throw new Error("createOutlineItem TreeItem Invalid OutlineExploreItem ");
     }
+
+    let documentSymbol = element.outlineInfo.documentSymbol;
+
+    const treeItem = new vscode.TreeItem(documentSymbol.name);
+    if (documentSymbol.children?.length > 0) {
+      treeItem.collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
+    } else {
+      treeItem.collapsibleState = vscode.TreeItemCollapsibleState.None;
+    }
+
+    treeItem.iconPath = new vscode.ThemeIcon(
+      SymbolKind2IconId.get(documentSymbol.kind) || "symbol-property",
+    );
+    treeItem.description = documentSymbol.detail;
+    treeItem.command = {
+      command: "outline-explorer.item-clicked",
+      title: "Click Item",
+      arguments: [element],
+    };
+
+    treeItem.contextValue = "outline";
+
+    return treeItem;
+  }
 }

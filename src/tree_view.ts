@@ -192,16 +192,27 @@ export class OutlineExplorerTreeView {
         if (!item) {
             return;
         }
-
+    
+        const singleClick = config.GetSingleClickOpen();
+    
         // outlineItem.onClick() may change the active editor, at this time, the global event handler won't need to handle the active editor change event
         if (item.GetItemType() === ItemType.Outline) {
             this.ignoreActiveEditorChange = true;
         }
+    
+        if (singleClick) {
+            // directly open the item on single click
+            const uri = item.GetUri?.(); // assume your Item has a method to get URI
+            if (uri) {
+                vscode.commands.executeCommand('vscode.open', uri, { preview: false });
+            }
+        } else {
+            // keep existing behavior
+            item.OnClick();
+        }
 
-        item.OnClick();
-
-        return;
-    }
+    return;
+}
 
     async RevealUri(uri: vscode.Uri) {
         if (!this.treeViewVisible) {

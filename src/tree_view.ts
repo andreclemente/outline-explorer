@@ -64,22 +64,22 @@ export class OutlineExplorerTreeView {
     }
 
     registerCommands(context: vscode.ExtensionContext): void {
-        context.subscriptions.push(vscode.commands.registerCommand('outline-explorer.item-clicked', async (item) => {
-            await this.OnClick(item);
-        }, this));
-        context.subscriptions.push(vscode.commands.registerCommand('outline-explorer.refresh', (item) => {
-            this.Refresh(item);
-        }, this));
-        context.subscriptions.push(vscode.commands.registerCommand('outline-explorer.expand-1-level', async () => {
-            await this.ToExpand(undefined);
-        }, this));
-        context.subscriptions.push(vscode.commands.registerCommand('outline-explorer.expand-2-levels', async (item) => {
-            await this.ToExpand(item);
-        }, this));
-        context.subscriptions.push(vscode.commands.registerCommand('outline-explorer.collapse-all', async (item) => {
-            await this.ToCollapse(item);
-        }, this));
-    }
+    context.subscriptions.push(vscode.commands.registerCommand('outline-explorer.item-clicked', async (item: Item) => {
+        await this.OnClick(item);
+    }, this));
+    context.subscriptions.push(vscode.commands.registerCommand('outline-explorer.refresh', (item: Item) => {
+        this.Refresh(item);
+    }, this));
+    context.subscriptions.push(vscode.commands.registerCommand('outline-explorer.expand-1-level', async () => {
+        await this.ToExpand(undefined);
+    }, this));
+    context.subscriptions.push(vscode.commands.registerCommand('outline-explorer.expand-2-levels', async (item: Item) => {
+        await this.ToExpand(item);
+    }, this));
+    context.subscriptions.push(vscode.commands.registerCommand('outline-explorer.collapse-all', async (item: Item) => {
+        await this.ToCollapse(item);
+    }, this));
+}
 
     registerTreeViewEventHandlers(): void {
         this.treeView.onDidChangeVisibility(e => this.OnVisibilityChanged(e));

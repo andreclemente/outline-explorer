@@ -27,7 +27,7 @@ export abstract class Item {
     abstract GetItemType(): ItemType;
     abstract OnClick(): void;
     abstract CreateTreeItem(): Promise<vscode.TreeItem>;
-
+    abstract GetUri(): vscode.Uri;
 
     async GetTreeItem(): Promise<vscode.TreeItem> {
         if (!this.treeItem) {
@@ -73,6 +73,10 @@ export class FileItem extends Item {
         return ItemType.File;
     }
 
+    GetUri(): vscode.Uri {
+        return this.fileInfo.uri;
+    }
+
     OnClick() {
         vscode.commands.executeCommand('vscode.open', this.fileInfo.uri);
     }
@@ -105,6 +109,10 @@ export class OutlineItem extends Item {
 
     GetItemType(): ItemType {
         return ItemType.Outline;
+    }
+
+    GetUri(): vscode.Uri {
+        return this.fileInfo.uri;
     }
 
     async OnClick() {

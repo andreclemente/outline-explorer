@@ -79,6 +79,11 @@
             "type": "string"
           },
           "markdownDescription": "%configuration.unsupportedFileExtensions.description%"
+        },
+        "outline-explorer.singleClickOpen": {
+          "type": "boolean",
+          "default": false,
+          "description": "Open files or symbols with a single click in Outline Explorer."
         }
       }
     },
